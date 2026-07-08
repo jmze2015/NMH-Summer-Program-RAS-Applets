@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gravity Orbit Applet</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #1f2329;
+      color: white;
+      overflow: hidden;
+    }
+    #toolbar {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 10;
+      width: 370px;
+      padding: 14px;
+      background: rgba(20, 24, 30, 0.92);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+      user-select: none;
+    }
+    #toolbar h1 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .row { margin: 10px 0; }
+    label { display: block; font-size: 13px; color: #d7dce3; margin-bottom: 4px; }
+    input[type="range"] { width: 100%; }
+    button, .toggleLabel {
+      border: 0;
+      border-radius: 10px;
+      padding: 9px 10px;
+      background: #343b46;
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+      margin: 3px 3px 3px 0;
+    }
+    button:hover, .toggleLabel:hover { background: #46505d; }
+    button.active { background: #546a8c; }
+    .hint {
+      margin-top: 9px;
+      font-size: 12px;
+      line-height: 1.35;
+      color: #c3cad4;
+    }
+    #canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: #6f747c;
+      cursor: crosshair;
+    }
+    .value { color: #ffd18a; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <h1>Gravity Orbit Applet</h1>
+
+    <div class="row">
+      <button id="placeStarBtn" class="active">Place / Move Star</button>
+      <button id="placePlanetBtn">Place / Move Planet 1</button>
+      <button id="placePlanet2Btn">Place / Move Planet 2</button>
+      <button id="dragViewBtn">Drag View</button>
+    </div>
+
+    <div class="row">
+      <label for="massSlider">Star mass: <span id="massValue" class="value">1.00 M☉</span></label>
+      <input id="massSlider" type="range" min="0.1" max="8" step="0.05" value="1" />
+      <div class="hint" style="margin-top:6px;">
+        Planet masses: <span id="planetMassValue" class="value">1.00 M⊕ each</span>
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="togglePathBtn" class="active">Trajectory: ON</button>
+      <button id="toggleForceBtn">Gravity Vector: OFF</button>
+      <button id="gravityModeBtn">Gravity: Star Only</button>
+      <button id="unitBtn">Units: AU</button>
+      <button id="pauseBtn">Pause</button>
+      <button id="resetBtn">Reset Selected Planet</button>
+      <button id="speedBoostBtn" title="Press and hold for 10× speed">Hold 10×</button>
+    </div>
+
+    <div class="row">
+      <button id="zoomInBtn">Zoom In</button>
+      <button id="zoomOutBtn">Zoom Out</button>
+      <button id="centerBtn">Center View</button>
+    </div>
+
+    <div class="hint">
+      1. Choose <b>Place / Move Star</b>, then drag the orange star.<br>
+      2. Choose <b>Place / Move Planet 1</b> or <b>Planet 2</b>, drag that planet somewhere, then click-drag from it to set its launch velocity.<br>
+      3. Distances use AU by default. Toggle to km for engineering notation. Choose <b>Drag View</b> to pan around the space. Right-click drag, middle-click drag, or hold <b>Space</b> also pans. Mouse wheel zooms. Use <b>Gravity: Star Only / Full Gravity</b> to toggle planet–planet interactions.
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const placeStarBtn = document.getElementById('placeStarBtn');
+    const placePlanetBtn = document.getElementById('placePlanetBtn');
+    const placePlanet2Btn = document.getElementById('placePlanet2Btn');
+    const dragViewBtn = document.getElementById('dragViewBtn');
+    const massSlider = document.getElementById('massSlider');
+    const massValue = document.getElementById('massValue');
+    const planetMassValue = document.getElementById('planetMassValue');
+    const togglePathBtn = document.getElementById('togglePathBtn');
+    const toggleForceBtn = document.getElementById('toggleForceBtn');
+    const gravityModeBtn = document.getElementById('gravityModeBtn');
+    const unitBtn = document.getElementById('unitBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const zoomInBtn = document.getElementById('zoomInBtn');
+    const zoomOutBtn = document.getElementById('zoomOutBtn');
+    const centerBtn = document.getElementById('centerBtn');
+    const speedBoostBtn = document.getElementById('speedBoostBtn');
+
+    let W = 0, H = 0;
+    let scale = 180; // pixels per AU
+    let camera = { x: 0, y: 0 };
+
+    // Simulation units: distance = AU, mass = solar masses, time = days.
+    // G = 4π² AU³/(M☉ yr²), converted to AU³/(M☉ day²).
+    const G = 0.00029591220828559104;
+    const G_SI = 6.67430e-11;
+    const SOLAR_MASS_KG = 1.98847e30;
+    const EARTH_MASS_KG = 5.9722e24;
+    const PLANET_MASS_EARTHS = 1.0;
+    const PLANET_MASS_SOLAR = PLANET_MASS_EARTHS * EARTH_MASS_KG / SOLAR_MASS_KG;
+    const AU_IN_M = 149_597_870_700;
+    const AU_IN_KM = 149_597_870.7;
+    const DAY_IN_SECONDS = 86400;
+    const daysPerSecond = 45; // Speeds up time so orbits are visible.
+    const softening = 0.015;  // AU; prevents numerical blow-up near the star.
+    const maxPathPoints = 6000;
+    const velocityScale = 0.018; // AU/day per AU of drag; 1 AU drag ≈ Earth orbital speed.
+
+    let mode = 'star';
+    let selectedPlanetIndex = 0;
+    let paused = false;
+    let showPath = true;
+    let showForce = false;
+    let fullGravity = false;
+    let useKm = false;
+    let spaceDown = false;
+
+    let star = {
+      x: 0,
+      y: 0,
+      mass: Number(massSlider.value),
+      radius: 0.055 // visual radius in AU
+    };
+
+    let planets = [
+      {
+        name: 'Planet 1',
+        color: '#5ad2ff',
+        start: { x: 1.0, y: 0 },
+        x: 1.0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        radius: 0.025,
+        launched: false,
+        massEarths: PLANET_MASS_EARTHS,
+        massSolar: PLANET_MASS_SOLAR,
+        path: []
+      },
+      {
+        name: 'Planet 2',
+        color: '#b7ff5a',
+        start: { x: -1.4, y: 0 },
+        x: -1.4,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        radius: 0.025,
+        launched: false,
+        massEarths: PLANET_MASS_EARTHS,
+        massSolar: PLANET_MASS_SOLAR,
+        path: []
+      }
+    ];
+
+    function selectedPlanet() {
+      return planets[selectedPlanetIndex];
+    }
+
+    let draggingStar = false;
+    let draggingPlanet = false;
+    let aimingVelocity = false;
+    let panning = false;
+    let panLast = { x: 0, y: 0 };
+    let aimStart = null;
+    let aimEnd = null;
+    let liveAimSpeed = null;
+    let speedMultiplier = 1;
+
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      W = window.innerWidth;
+      H = window.innerHeight;
+      canvas.width = Math.floor(W * dpr);
+      canvas.height = Math.floor(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function worldToScreen(p) {
+      return {
+        x: W / 2 + (p.x - camera.x) * scale,
+        y: H / 2 + (p.y - camera.y) * scale
+      };
+    }
+
+    function screenToWorld(p) {
+      return {
+        x: camera.x + (p.x - W / 2) / scale,
+        y: camera.y + (p.y - H / 2) / scale
+      };
+    }
+
+    function dist(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function starColor(mass) {
+      if (mass < 0.6) return '#ff7043';      // red-orange
+      if (mass < 1.2) return '#ffb347';      // orange/yellow
+      if (mass < 3.0) return '#fff3b0';      // pale yellow-white
+      return '#a9d6ff';                      // blue-white
+    }
+
+    function setMode(newMode) {
+      mode = newMode;
+      placeStarBtn.classList.toggle('active', mode === 'star');
+      placePlanetBtn.classList.toggle('active', mode === 'planet1');
+      placePlanet2Btn.classList.toggle('active', mode === 'planet2');
+      dragViewBtn.classList.toggle('active', mode === 'drag');
+    }
+
+    function resetPlanet() {
+      const p = selectedPlanet();
+      p.x = p.start.x;
+      p.y = p.start.y;
+      p.vx = 0;
+      p.vy = 0;
+      p.launched = false;
+      paused = true;
+      pauseBtn.textContent = 'Resume';
+      pauseBtn.classList.add('active');
+      p.path = [{ x: p.x, y: p.y }];
+    }
+
+    function fmtDistance(au) {
+      if (!useKm) return `${au.toFixed(2)} AU`;
+      const km = au * AU_IN_KM;
+      return `${km.toExponential(2).replace('+', '')} km`;
+    }
+
+    function fmtVelocity(auPerDay) {
+      if (!useKm) return `${auPerDay.toFixed(4)} AU/day`;
+      const kmPerSec = auPerDay * AU_IN_KM / DAY_IN_SECONDS;
+      return `${kmPerSec.toExponential(2).replace('+', '')} km/s`;
+    }
+
+    function gravityStats(p = selectedPlanet()) {
+      // Net force/acceleration on a planet. In Star Only mode this is just the star.
+      // In Full Gravity mode, the other planet also contributes.
+      let ax = 0;
+      let ay = 0;
+      let fxN = 0;
+      let fyN = 0;
+
+      const addGravitySource = (sourceX, sourceY, sourceMassSolar, sourceMassKg) => {
+        const dx = sourceX - p.x;
+        const dy = sourceY - p.y;
+        const r2 = dx * dx + dy * dy + softening * softening;
+        const r = Math.sqrt(r2);
+        const accel = G * sourceMassSolar / r2;
+        ax += accel * dx / r;
+        ay += accel * dy / r;
+
+        const rMeters = Math.max(r * AU_IN_M, 1);
+        const planetMassKg = p.massEarths * EARTH_MASS_KG;
+        const forceN = G_SI * sourceMassKg * planetMassKg / (rMeters * rMeters);
+        fxN += forceN * dx / r;
+        fyN += forceN * dy / r;
+      };
+
+      addGravitySource(star.x, star.y, star.mass, star.mass * SOLAR_MASS_KG);
+
+      if (fullGravity) {
+        for (const other of planets) {
+          if (other === p) continue;
+          addGravitySource(other.x, other.y, other.massSolar, other.massEarths * EARTH_MASS_KG);
+        }
+      }
+
+      const dx = star.x - p.x;
+      const dy = star.y - p.y;
+      const rAU = Math.hypot(dx, dy);
+      const forceN = Math.hypot(fxN, fyN);
+      const accelAUPerDay2 = Math.hypot(ax, ay);
+      return { dx, dy, rAU, forceN, accelAUPerDay2, ax, ay, fxN, fyN };
+    }
+
+    function fmtForce(newtons) {
+      return `${newtons.toExponential(2).replace('+', '')} N`;
+    }
+
+    function updatePhysics(dt) {
+      if (paused || aimingVelocity || draggingPlanet) return;
+
+      const substeps = 4;
+      const h = (dt * daysPerSecond * speedMultiplier) / substeps;
+
+      for (let i = 0; i < substeps; i++) {
+        const accels = planets.map(p => {
+          if (!p.launched) return { ax: 0, ay: 0 };
+          let ax = 0;
+          let ay = 0;
+
+          const addAcceleration = (sourceX, sourceY, sourceMassSolar) => {
+            const dx = sourceX - p.x;
+            const dy = sourceY - p.y;
+            const r2 = dx * dx + dy * dy + softening * softening;
+            const r = Math.sqrt(r2);
+            const accel = G * sourceMassSolar / r2;
+            ax += accel * dx / r;
+            ay += accel * dy / r;
+          };
+
+          addAcceleration(star.x, star.y, star.mass);
+
+          if (fullGravity) {
+            for (const other of planets) {
+              if (other === p) continue;
+              addAcceleration(other.x, other.y, other.massSolar);
+            }
+          }
+
+          return { ax, ay };
+        });
+
+        planets.forEach((p, index) => {
+          if (!p.launched) return;
+          p.vx += accels[index].ax * h;
+          p.vy += accels[index].ay * h;
+          p.x += p.vx * h;
+          p.y += p.vy * h;
+        });
+      }
+
+      for (const p of planets) {
+        if (!p.launched) continue;
+        p.path.push({ x: p.x, y: p.y });
+        if (p.path.length > maxPathPoints) p.path.shift();
+      }
+    }
+
+    function chooseGridSize() {
+      const targetPx = 90;
+      const raw = targetPx / scale;
+      const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+      const mant = raw / pow;
+      const nice = mant < 2 ? 1 : mant < 5 ? 2 : 5;
+      return nice * pow;
+    }
+
+    function drawGrid() {
+      const gridSize = chooseGridSize();
+      const topLeft = screenToWorld({ x: 0, y: 0 });
+      const bottomRight = screenToWorld({ x: W, y: H });
+
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+
+      const startX = Math.floor(topLeft.x / gridSize) * gridSize;
+      const endX = Math.ceil(bottomRight.x / gridSize) * gridSize;
+      const startY = Math.floor(topLeft.y / gridSize) * gridSize;
+      const endY = Math.ceil(bottomRight.y / gridSize) * gridSize;
+
+      for (let x = startX; x <= endX; x += gridSize) {
+        const a = worldToScreen({ x, y: startY });
+        const b = worldToScreen({ x, y: endY });
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+      for (let y = startY; y <= endY; y += gridSize) {
+        const a = worldToScreen({ x: startX, y });
+        const b = worldToScreen({ x: endX, y });
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.font = '11px system-ui';
+      for (let x = startX; x <= endX; x += gridSize) {
+        if (Math.abs(x) < 1e-9) continue;
+        const p = worldToScreen({ x, y: 0 });
+        if (p.x > 0 && p.x < W) ctx.fillText(fmtDistance(Math.abs(x)), p.x + 3, H - 12);
+      }
+      ctx.restore();
+    }
+
+    function drawScaleBar() {
+      const barAU = chooseGridSize();
+      const barPx = barAU * scale;
+      const x = W - 240;
+      const y = H - 38;
+      ctx.save();
+      ctx.strokeStyle = 'white';
+      ctx.fillStyle = 'white';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + barPx, y);
+      ctx.moveTo(x, y - 6);
+      ctx.lineTo(x, y + 6);
+      ctx.moveTo(x + barPx, y - 6);
+      ctx.lineTo(x + barPx, y + 6);
+      ctx.stroke();
+      ctx.font = '13px system-ui';
+      ctx.fillText(fmtDistance(barAU), x, y - 12);
+      ctx.restore();
+    }
+
+    function drawPath() {
+      if (!showPath) return;
+      ctx.save();
+      ctx.lineWidth = 2;
+      for (const pObj of planets) {
+        if (pObj.path.length < 2) continue;
+        ctx.strokeStyle = pObj.color === '#5ad2ff' ? 'rgba(90, 210, 255, 0.85)' : 'rgba(183, 255, 90, 0.85)';
+        ctx.beginPath();
+        const first = worldToScreen(pObj.path[0]);
+        ctx.moveTo(first.x, first.y);
+        for (let i = 1; i < pObj.path.length; i++) {
+          const pt = worldToScreen(pObj.path[i]);
+          ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawStar() {
+      const s = worldToScreen(star);
+      const r = Math.max(12, star.radius * scale);
+      const glow = ctx.createRadialGradient(s.x, s.y, r * 0.2, s.x, s.y, r * 2.2);
+      glow.addColorStop(0, starColor(star.mass));
+      glow.addColorStop(0.35, 'rgba(255,170,60,0.35)');
+      glow.addColorStop(1, 'rgba(255,170,60,0)');
+
+      ctx.save();
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = starColor(star.mass);
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.font = 'bold 12px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${star.mass.toFixed(2)} M☉`, s.x, s.y + 4);
+      ctx.restore();
+    }
+
+    function drawPlanet(pObj, index) {
+      const pt = worldToScreen(pObj);
+      const r = Math.max(6, pObj.radius * scale);
+
+      ctx.save();
+      ctx.fillStyle = pObj.color;
+      ctx.strokeStyle = index === selectedPlanetIndex ? 'white' : 'rgba(255,255,255,0.65)';
+      ctx.lineWidth = index === selectedPlanetIndex ? 3 : 2;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.font = 'bold 11px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(index + 1, pt.x, pt.y + 4);
+      ctx.restore();
+    }
+
+    function drawPlanets() {
+      planets.forEach((pObj, index) => drawPlanet(pObj, index));
+    }
+
+    function drawVelocityArrow() {
+      if (!aimingVelocity || !aimStart || !aimEnd) return;
+      const a = worldToScreen(aimStart);
+      const b = worldToScreen(aimEnd);
+      const angle = Math.atan2(b.y - a.y, b.x - a.x);
+      const head = 13;
+
+      ctx.save();
+      ctx.strokeStyle = 'white';
+      ctx.fillStyle = 'white';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.x - head * Math.cos(angle - Math.PI / 6), b.y - head * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(b.x - head * Math.cos(angle + Math.PI / 6), b.y - head * Math.sin(angle + Math.PI / 6));
+      ctx.closePath();
+      ctx.fill();
+
+      const label = `Launch speed: ${fmtVelocity(liveAimSpeed || 0)}`;
+      ctx.font = 'bold 13px system-ui';
+      ctx.textAlign = 'left';
+      const labelX = b.x + 12;
+      const labelY = b.y - 12;
+      const textWidth = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(labelX - 6, labelY - 17, textWidth + 12, 24);
+      ctx.fillStyle = 'white';
+      ctx.fillText(label, labelX, labelY);
+      ctx.restore();
+    }
+
+    function drawForceVector() {
+      if (!showForce) return;
+      for (const pObj of planets) {
+        const stats = gravityStats(pObj);
+        if (stats.accelAUPerDay2 < 1e-12) continue;
+
+        const pt = worldToScreen(pObj);
+        const angle = Math.atan2(stats.ay, stats.ax);
+        const length = Math.min(150, Math.max(28, 18 * Math.log10(stats.forceN / 1e16 + 1)));
+        const end = {
+          x: pt.x + length * Math.cos(angle),
+          y: pt.y + length * Math.sin(angle)
+        };
+        const head = 12;
+
+        ctx.save();
+        ctx.strokeStyle = '#ff5a5a';
+        ctx.fillStyle = '#ff5a5a';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(pt.x, pt.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(end.x, end.y);
+        ctx.lineTo(end.x - head * Math.cos(angle - Math.PI / 6), end.y - head * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(end.x - head * Math.cos(angle + Math.PI / 6), end.y - head * Math.sin(angle + Math.PI / 6));
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawHUD() {
+      const p = selectedPlanet();
+      const stats = gravityStats(p);
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(W - 322, 12, 310, 206);
+      ctx.fillStyle = 'white';
+      ctx.font = '13px system-ui';
+      ctx.fillText(`Scale: ${fmtDistance(1)} = ${scale.toFixed(0)} px`, W - 305, 36);
+      ctx.fillText(`Selected: ${p.name}`, W - 305, 58);
+      ctx.fillText(`${aimingVelocity ? 'Launch speed' : 'Selected speed'}: ${fmtVelocity(aimingVelocity ? (liveAimSpeed || 0) : Math.hypot(p.vx, p.vy))}`, W - 305, 80);
+      ctx.fillText(`Star mass: ${star.mass.toFixed(2)} M☉`, W - 305, 102);
+      ctx.fillText(`Planet mass: ${p.massEarths.toFixed(2)} M⊕`, W - 305, 124);
+      ctx.fillText(`Distance to star: ${fmtDistance(stats.rAU)}`, W - 305, 146);
+      ctx.fillText(`Net gravity force: ${fmtForce(stats.forceN)}`, W - 305, 168);
+      ctx.fillText(`Physics: ${fullGravity ? 'Full gravity' : 'Star gravity only'}`, W - 305, 190);
+      ctx.fillText(`Mode: ${mode === 'star' ? 'Star' : mode === 'planet1' ? 'Planet 1' : mode === 'planet2' ? 'Planet 2' : 'Drag view'}${speedMultiplier > 1 ? ' · 10×' : ''}`, W - 305, 212);
+      ctx.restore();
+    }
+
+    function render() {
+      ctx.clearRect(0, 0, W, H);
+      drawGrid();
+      drawPath();
+      drawStar();
+      drawPlanets();
+      drawForceVector();
+      drawVelocityArrow();
+      drawHUD();
+      drawScaleBar();
+    }
+
+    let last = performance.now();
+    function animate(now) {
+      const rawDt = Math.min((now - last) / 1000, 0.033);
+      last = now;
+      updatePhysics(rawDt);
+      render();
+      requestAnimationFrame(animate);
+    }
+
+    function pointerPosition(evt) {
+      const rect = canvas.getBoundingClientRect();
+      return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+    }
+
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+    canvas.addEventListener('pointerdown', e => {
+      const screen = pointerPosition(e);
+      const world = screenToWorld(screen);
+      const overStar = dist(world, star) <= Math.max(star.radius, 12 / scale);
+      const p = selectedPlanet();
+      const overPlanet = dist(world, p) <= Math.max(p.radius, 10 / scale);
+
+      if (mode === 'drag' || e.button === 1 || e.button === 2 || spaceDown) {
+        panning = true;
+        panLast = screen;
+        canvas.setPointerCapture(e.pointerId);
+        return;
+      }
+
+      if (mode === 'star') {
+        draggingStar = true;
+        star.x = world.x;
+        star.y = world.y;
+        canvas.setPointerCapture(e.pointerId);
+      } else {
+        if (overPlanet) {
+          aimingVelocity = true;
+          aimStart = { x: p.x, y: p.y };
+          aimEnd = world;
+          liveAimSpeed = Math.hypot(aimEnd.x - aimStart.x, aimEnd.y - aimStart.y) * velocityScale;
+        } else {
+          draggingPlanet = true;
+          p.x = world.x;
+          p.y = world.y;
+          p.vx = 0;
+          p.vy = 0;
+          p.launched = false;
+          p.start = { x: p.x, y: p.y };
+          p.path = [];
+        }
+        canvas.setPointerCapture(e.pointerId);
+      }
+    });
+
+    canvas.addEventListener('pointermove', e => {
+      const screen = pointerPosition(e);
+      const world = screenToWorld(screen);
+      const p = selectedPlanet();
+
+      if (panning) {
+        camera.x -= (screen.x - panLast.x) / scale;
+        camera.y -= (screen.y - panLast.y) / scale;
+        panLast = screen;
+      } else if (draggingStar) {
+        star.x = world.x;
+        star.y = world.y;
+      } else if (draggingPlanet) {
+        p.x = world.x;
+        p.y = world.y;
+        p.start = { x: p.x, y: p.y };
+      } else if (aimingVelocity) {
+        aimEnd = world;
+        liveAimSpeed = Math.hypot(aimEnd.x - aimStart.x, aimEnd.y - aimStart.y) * velocityScale;
+      }
+    });
+
+    canvas.addEventListener('pointerup', e => {
+      const p = selectedPlanet();
+      if (aimingVelocity && aimStart && aimEnd) {
+        p.vx = (aimEnd.x - aimStart.x) * velocityScale;
+        p.vy = (aimEnd.y - aimStart.y) * velocityScale;
+        p.launched = true;
+        paused = false;
+        pauseBtn.textContent = 'Pause';
+        pauseBtn.classList.remove('active');
+        p.path = [{ x: p.x, y: p.y }];
+      }
+
+      draggingStar = false;
+      draggingPlanet = false;
+      aimingVelocity = false;
+      panning = false;
+      aimStart = null;
+      aimEnd = null;
+      liveAimSpeed = null;
+    });
+
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const mouse = pointerPosition(e);
+      const before = screenToWorld(mouse);
+      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      scale = Math.min(1600, Math.max(15, scale * factor));
+      const after = screenToWorld(mouse);
+      camera.x += before.x - after.x;
+      camera.y += before.y - after.y;
+    }, { passive: false });
+
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space') spaceDown = true;
+    });
+    window.addEventListener('keyup', e => {
+      if (e.code === 'Space') spaceDown = false;
+    });
+
+    placeStarBtn.addEventListener('click', () => setMode('star'));
+    placePlanetBtn.addEventListener('click', () => { selectedPlanetIndex = 0; setMode('planet1'); });
+    placePlanet2Btn.addEventListener('click', () => { selectedPlanetIndex = 1; setMode('planet2'); });
+    dragViewBtn.addEventListener('click', () => setMode('drag'));
+
+    massSlider.addEventListener('input', () => {
+      star.mass = Number(massSlider.value);
+      massValue.textContent = `${star.mass.toFixed(2)} M☉`;
+    });
+
+    togglePathBtn.addEventListener('click', () => {
+      showPath = !showPath;
+      togglePathBtn.textContent = `Trajectory: ${showPath ? 'ON' : 'OFF'}`;
+      togglePathBtn.classList.toggle('active', showPath);
+    });
+
+    toggleForceBtn.addEventListener('click', () => {
+      showForce = !showForce;
+      toggleForceBtn.textContent = `Gravity Vector: ${showForce ? 'ON' : 'OFF'}`;
+      toggleForceBtn.classList.toggle('active', showForce);
+    });
+
+    gravityModeBtn.addEventListener('click', () => {
+      fullGravity = !fullGravity;
+      gravityModeBtn.textContent = `Gravity: ${fullGravity ? 'Full Gravity' : 'Star Only'}`;
+      gravityModeBtn.classList.toggle('active', fullGravity);
+    });
+
+    unitBtn.addEventListener('click', () => {
+      useKm = !useKm;
+      unitBtn.textContent = `Units: ${useKm ? 'km' : 'AU'}`;
+      unitBtn.classList.toggle('active', useKm);
+    });
+
+    pauseBtn.addEventListener('click', () => {
+      paused = !paused;
+      pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+      pauseBtn.classList.toggle('active', paused);
+    });
+
+    resetBtn.addEventListener('click', resetPlanet);
+
+    zoomInBtn.addEventListener('click', () => {
+      scale = Math.min(1600, scale * 1.2);
+    });
+    zoomOutBtn.addEventListener('click', () => {
+      scale = Math.max(15, scale / 1.2);
+    });
+    centerBtn.addEventListener('click', () => {
+      camera.x = 0;
+      camera.y = 0;
+      scale = 180;
+    });
+
+    function setSpeedBoost(on) {
+      speedMultiplier = on ? 10 : 1;
+      speedBoostBtn.classList.toggle('active', on);
+      speedBoostBtn.textContent = on ? '10× ACTIVE' : 'Hold 10×';
+    }
+
+    speedBoostBtn.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      setSpeedBoost(true);
+      speedBoostBtn.setPointerCapture(e.pointerId);
+    });
+    speedBoostBtn.addEventListener('pointerup', () => setSpeedBoost(false));
+    speedBoostBtn.addEventListener('pointercancel', () => setSpeedBoost(false));
+    speedBoostBtn.addEventListener('pointerleave', () => setSpeedBoost(false));
+
+    planetMassValue.textContent = `${PLANET_MASS_EARTHS.toFixed(2)} M⊕ each`;
+
+    window.addEventListener('resize', resize);
+    resize();
+    selectedPlanetIndex = 0; resetPlanet();
+    selectedPlanetIndex = 1; resetPlanet();
+    selectedPlanetIndex = 0; paused = true; pauseBtn.textContent = 'Resume'; pauseBtn.classList.add('active');
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
