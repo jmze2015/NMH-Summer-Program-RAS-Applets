@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Rocket Thrust Applet</title>
+<style>
+  :root{
+    --panel:#ffffff;
+    --border:#d6dbe3;
+    --text:#1f2937;
+    --muted:#667085;
+    --accent:#2563eb;
+    --danger:#dc2626;
+    --success:#16a34a;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:Inter,Segoe UI,Arial,sans-serif;
+    color:var(--text);
+    background:#f3f5f8;
+    overflow:hidden;
+  }
+  #app{
+    display:grid;
+    grid-template-columns:290px 1fr;
+    height:100vh;
+  }
+  aside{
+    background:var(--panel);
+    border-right:1px solid var(--border);
+    padding:18px;
+    overflow:auto;
+    z-index:3;
+  }
+  h1{
+    font-size:21px;
+    margin:0 0 4px;
+  }
+  .subtitle{
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.4;
+    margin-bottom:18px;
+  }
+  .section{
+    border-top:1px solid #eceff3;
+    padding-top:15px;
+    margin-top:15px;
+  }
+  .section-title{
+    font-size:13px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    color:#475467;
+    margin-bottom:10px;
+  }
+  button{
+    width:100%;
+    border:0;
+    border-radius:10px;
+    padding:11px 12px;
+    font-weight:700;
+    cursor:pointer;
+    margin-bottom:9px;
+  }
+  #launchBtn{background:var(--accent);color:#fff}
+  #thrustBtn{
+    background:#f59e0b;
+    color:#fff;
+    user-select:none;
+    touch-action:none;
+  }
+  #thrustBtn.active{
+    background:#d97706;
+    transform:translateY(1px);
+  }
+  #speedBtn{
+    background:#7c3aed;
+    color:#fff;
+  }
+  #speedBtn.active{
+    background:#5b21b6;
+    box-shadow:0 0 0 3px rgba(124,58,237,.18);
+  }
+  #resetBtn{background:#eef2f7;color:#344054}
+
+  .choice-group{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:7px;
+    margin-bottom:11px;
+  }
+  .choice-group input{
+    position:absolute;
+    opacity:0;
+    pointer-events:none;
+  }
+  .choice-group label{
+    display:block;
+    margin:0;
+    padding:9px 4px;
+    border:1px solid #cbd5e1;
+    border-radius:9px;
+    text-align:center;
+    background:#f8fafc;
+    color:#475467;
+    font-size:12px;
+    font-weight:750;
+    cursor:pointer;
+    transition:.15s;
+  }
+  .choice-group input:checked + label{
+    background:#dbeafe;
+    border-color:#2563eb;
+    color:#1d4ed8;
+    box-shadow:0 0 0 2px rgba(37,99,235,.10);
+  }
+  .choice-group.secret-unlocked{
+    grid-template-columns:repeat(2,1fr);
+  }
+  .secret-engine{
+    display:none;
+  }
+  .secret-engine.unlocked{
+    display:block;
+  }
+  .secret-engine label{
+    background:linear-gradient(135deg,#581c87,#c026d3);
+    border-color:#e879f9;
+    color:white;
+    text-shadow:0 1px 2px #0008;
+  }
+  .secret-engine input:checked + label{
+    background:linear-gradient(135deg,#3b0764,#a21caf);
+    border-color:#f0abfc;
+    color:#fff;
+    box-shadow:0 0 0 2px rgba(232,121,249,.28),0 0 16px rgba(217,70,239,.45);
+  }
+  button:disabled{opacity:.5;cursor:not-allowed}
+  label{
+    display:flex;
+    justify-content:space-between;
+    font-size:13px;
+    font-weight:600;
+    margin-bottom:6px;
+  }
+  input[type=range]{width:100%;margin-bottom:13px}
+  .toggle-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    margin:10px 0;
+    font-size:13px;
+    font-weight:600;
+  }
+  .switch{
+    position:relative;width:44px;height:24px;flex:0 0 auto;
+  }
+  .switch input{opacity:0;width:0;height:0}
+  .slider{
+    position:absolute;inset:0;background:#cbd5e1;border-radius:999px;cursor:pointer;transition:.2s;
+  }
+  .slider:before{
+    content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;background:white;border-radius:50%;transition:.2s;box-shadow:0 1px 3px #0003;
+  }
+  .switch input:checked + .slider{background:var(--accent)}
+  .switch input:checked + .slider:before{transform:translateX(20px)}
+  .stats{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+  }
+  .stat{
+    background:#f8fafc;
+    border:1px solid #e5e9ef;
+    border-radius:9px;
+    padding:9px;
+  }
+  .stat .name{font-size:11px;color:var(--muted)}
+  .stat .value{font-size:15px;font-weight:750;margin-top:2px}
+  .equation{
+    padding:10px;
+    border-radius:9px;
+    background:#eff6ff;
+    color:#1d4ed8;
+    font-size:13px;
+    line-height:1.5;
+  }
+  main{position:relative;min-width:0;background:#fff}
+  canvas{display:block;width:100%;height:100%}
+  #forcePanel{
+    position:absolute;
+    top:16px;
+    right:16px;
+    width:270px;
+    min-height:225px;
+    background:rgba(255,255,255,.94);
+    border:1px solid var(--border);
+    border-radius:12px;
+    box-shadow:0 7px 20px #00000016;
+    padding:10px;
+    pointer-events:none;
+  }
+  #forcePanel h3{
+    margin:2px 0 7px;
+    text-align:center;
+    font-size:14px;
+  }
+  #forceCanvas{width:248px;height:178px}
+  #recordPanel{
+    position:absolute;
+    top:16px;
+    left:16px;
+    width:205px;
+    background:rgba(255,255,255,.92);
+    border:1px solid var(--border);
+    border-radius:12px;
+    box-shadow:0 7px 20px #00000016;
+    padding:12px;
+    pointer-events:none;
+  }
+  #recordPanel h3{
+    margin:0 0 9px;
+    font-size:14px;
+  }
+  .recordRow{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    margin:5px 0;
+    font-size:12px;
+  }
+  .recordRow strong{font-size:13px}
+  #milestoneToast{
+    position:absolute;
+    left:50%;
+    top:18px;
+    transform:translateX(-50%);
+    min-width:280px;
+    max-width:520px;
+    background:rgba(255,255,255,.95);
+    border:1px solid #cbd5e1;
+    border-radius:12px;
+    box-shadow:0 8px 24px #0002;
+    padding:11px 16px;
+    text-align:center;
+    font-weight:700;
+    opacity:0;
+    transition:opacity .25s ease;
+    pointer-events:none;
+  }
+  #milestoneToast.show{opacity:1}
+  #trajectoryPanel{
+    position:absolute;
+    right:16px;
+    bottom:16px;
+    width:260px;
+    height:190px;
+    background:rgba(255,255,255,.95);
+    border:1px solid var(--border);
+    border-radius:12px;
+    box-shadow:0 7px 20px #00000016;
+    padding:8px;
+    pointer-events:none;
+  }
+  #trajectoryPanel .panel-title{
+    position:absolute;left:11px;top:8px;font-size:12px;font-weight:700;color:#475467;
+  }
+  #trajectoryCanvas{width:242px;height:170px;margin-top:8px}
+  .legend{
+    font-size:11px;
+    color:var(--muted);
+    line-height:1.4;
+  }
+  @media(max-width:850px){
+    #app{grid-template-columns:240px 1fr}
+    aside{padding:13px}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <h1>Rocket Thrust Lab</h1>
+    <div class="subtitle">Use an automatic launch or manually pulse the engine to explore thrust, fuel use, and gravity.</div>
+
+    <button id="launchBtn">Launch Rocket</button>
+    <button id="thrustBtn">Hold to Thrust</button>
+    <button id="speedBtn">Hold for 10× Animation</button>
+    <button id="resetBtn">Reset</button>
+
+    <div class="section">
+      <div class="section-title">Engine Setting</div>
+      <label><span>Exhaust velocity</span><span id="veLabel">600 m/s</span></label>
+      <div class="choice-group" role="radiogroup" aria-label="Exhaust velocity">
+        <div>
+          <input id="ve400" name="exhaustVelocity" type="radio" value="400">
+          <label for="ve400">400 m/s</label>
+        </div>
+        <div>
+          <input id="ve600" name="exhaustVelocity" type="radio" value="600" checked>
+          <label for="ve600">600 m/s</label>
+        </div>
+        <div>
+          <input id="ve1000" name="exhaustVelocity" type="radio" value="1000">
+          <label for="ve1000">1000 m/s</label>
+        </div>
+        <div id="secretEngineChoice" class="secret-engine">
+          <input id="ve2500" name="exhaustVelocity" type="radio" value="2500">
+          <label for="ve2500">INSANE<br>2500 m/s</label>
+        </div>
+      </div>
+      <div class="legend">
+        Faster exhaust produces greater thrust while the fuel-flow rate remains fixed.
+        Hold <strong>Thrust</strong> or the space bar to fire manually.
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Display</div>
+      <div class="toggle-row">
+        <span>Show force diagram</span>
+        <label class="switch"><input id="forceToggle" type="checkbox" checked><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span>Show trajectory inset</span>
+        <label class="switch"><input id="trajectoryToggle" type="checkbox" checked><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span>Show exhaust particles</span>
+        <label class="switch"><input id="particlesToggle" type="checkbox" checked><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Live Measurements</div>
+      <div class="stats">
+        <div class="stat"><div class="name">Height</div><div class="value" id="heightVal">0.0 m</div></div>
+        <div class="stat"><div class="name">Velocity</div><div class="value" id="velocityVal">0.0 m/s</div></div>
+        <div class="stat"><div class="name">Fuel</div><div class="value" id="fuelVal">100%</div></div>
+        <div class="stat"><div class="name">Thrust</div><div class="value" id="thrustVal">0 N</div></div>
+        <div class="stat"><div class="name">Weight</div><div class="value" id="weightVal">0 N</div></div>
+        <div class="stat"><div class="name">Acceleration</div><div class="value" id="accelVal">0.0 m/s²</div></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="equation">
+        <strong>Thrust model</strong><br>
+        F<sub>thrust</sub> = fuel flow rate × exhaust velocity<br>
+        F<sub>net</sub> = F<sub>thrust</sub> − F<sub>gravity</sub>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <canvas id="mainCanvas"></canvas>
+
+    <div id="recordPanel">
+      <h3>Altitude Record</h3>
+      <div class="recordRow"><span>Current</span><strong id="currentAltRecord">0 m</strong></div>
+      <div class="recordRow"><span>Highest this flight</span><strong id="flightBestRecord">0 m</strong></div>
+      <div class="recordRow"><span>Personal best</span><strong id="personalBestRecord">0 m</strong></div>
+    </div>
+
+    <div id="milestoneToast"></div>
+
+    <div id="forcePanel">
+      <h3>Force Diagram</h3>
+      <canvas id="forceCanvas"></canvas>
+    </div>
+
+    <div id="trajectoryPanel">
+      <div class="panel-title">Full Flight Trajectory</div>
+      <canvas id="trajectoryCanvas"></canvas>
+    </div>
+  </main>
+</div>
+
+<script>
+(() => {
+  const mainCanvas = document.getElementById('mainCanvas');
+  const ctx = mainCanvas.getContext('2d');
+  const forceCanvas = document.getElementById('forceCanvas');
+  const fctx = forceCanvas.getContext('2d');
+  const trajectoryCanvas = document.getElementById('trajectoryCanvas');
+  const tctx = trajectoryCanvas.getContext('2d');
+
+  const launchBtn = document.getElementById('launchBtn');
+  const thrustBtn = document.getElementById('thrustBtn');
+  const speedBtn = document.getElementById('speedBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const exhaustChoices = [...document.querySelectorAll('input[name="exhaustVelocity"]')];
+  const veLabel = document.getElementById('veLabel');
+  const forceToggle = document.getElementById('forceToggle');
+  const trajectoryToggle = document.getElementById('trajectoryToggle');
+  const particlesToggle = document.getElementById('particlesToggle');
+  const forcePanel = document.getElementById('forcePanel');
+  const trajectoryPanel = document.getElementById('trajectoryPanel');
+  const milestoneToast = document.getElementById('milestoneToast');
+  const currentAltRecord = document.getElementById('currentAltRecord');
+  const flightBestRecord = document.getElementById('flightBestRecord');
+  const personalBestRecord = document.getElementById('personalBestRecord');
+  const secretEngineChoice = document.getElementById('secretEngineChoice');
+  const choiceGroup = document.querySelector('.choice-group');
+
+  const g = 9.81;
+  const dryMass = 150;
+  const initialFuelMass = 90;
+  const fuelFlowRate = 8.0;
+  const rocketWidth = 46;
+  const rocketHeight = 112;
+  let personalBest = Number(localStorage.getItem('rocketThrustPersonalBest') || 0);
+
+  const secretGoals = JSON.parse(localStorage.getItem('rocketThrustSecretGoals') || JSON.stringify({
+    safeLanding:false,
+    reboundFlight:false,
+    highAltitude:false
+  }));
+  let secretUnlocked = localStorage.getItem('rocketThrustSecretUnlocked') === 'true';
+
+  const milestones = [
+    {alt: 1000, text: '🎈 You have reached the hot-air balloon layer.'},
+    {alt: 3000, text: '☁ You are climbing through the cloud layer.'},
+    {alt: 11000, text: '✈ Commercial aircraft often cruise near this altitude.'},
+    {alt: 25000, text: '🎈 Weather balloons operate in this region.'},
+    {alt: 50000, text: '✨ The sky is becoming very dark.'},
+    {alt: 100000, text: '🚀 You crossed the Kármán line and reached space!'}
+  ];
+
+  let dpr = Math.max(1, window.devicePixelRatio || 1);
+  let state, particles, debris, trajectory, lastTime, cameraY;
+  let timeScale = 1;
+
+  function resetState(){
+    state = {
+      y: 0,
+      v: 0,
+      a: 0,
+      fuelMass: initialFuelMass,
+      launched: false,
+      autoBurn: false,
+      manualBurn: false,
+      burning: false,
+      launchUsed: false,
+      crashed: false,
+      landed: false,
+      landingSpeed: 0,
+      milestoneIndex: 0,
+      toastTimer: 0,
+      secretSequenceStage: 0,
+      secretSequenceComplete: false,
+      flightComplete: false,
+      explosionTime: 0,
+      maxHeight: 0,
+      flightTime: 0
+    };
+    particles = [];
+    debris = [];
+    trajectory = [{t:0,y:0,burning:false,v:0}];
+    lastTime = performance.now();
+    cameraY = 38;
+    launchBtn.disabled = false;
+    launchBtn.textContent = 'Launch Rocket';
+    thrustBtn.disabled = false;
+    thrustBtn.classList.remove('active');
+    timeScale = 1;
+    speedBtn.classList.remove('active');
+    speedBtn.textContent = 'Hold for 10× Animation';
+    milestoneToast.classList.remove('show');
+    if(secretUnlocked) revealSecretEngine(false);
+    updateReadouts();
+  }
+
+
+  function saveSecretProgress(){
+    localStorage.setItem('rocketThrustSecretGoals', JSON.stringify(secretGoals));
+  }
+
+  function revealSecretEngine(showAnnouncement=true){
+    secretUnlocked = true;
+    localStorage.setItem('rocketThrustSecretUnlocked','true');
+    secretEngineChoice.classList.add('unlocked');
+    choiceGroup.classList.add('secret-unlocked');
+    if(showAnnouncement){
+      showMilestone('⚡ SECRET ENGINE UNLOCKED: INSANE-O — 2500 m/s ⚡');
+      state.toastTimer = 6;
+    }
+  }
+
+  function checkSecretUnlock(){
+    if(secretGoals.safeLanding &&
+       secretGoals.reboundFlight &&
+       secretGoals.highAltitude &&
+       !secretUnlocked){
+      revealSecretEngine(true);
+    }
+  }
+
+  function updateSecretSequence(){
+    // Hidden sequence:
+    // first cross 500 m, then descend to 300 m or lower,
+    // then climb back to 500 m before landing safely.
+    if(state.secretSequenceStage===0 && state.y>=500){
+      state.secretSequenceStage=1;
+    }else if(state.secretSequenceStage===1 && state.y<=300 && state.v<0){
+      state.secretSequenceStage=2;
+    }else if(state.secretSequenceStage===2 && state.y>=500 && state.v>0){
+      state.secretSequenceStage=3;
+      state.secretSequenceComplete=true;
+    }
+  }
+
+  function formatAltitude(m){
+    if(m >= 100000) return `${(m/1000).toFixed(1)} km`;
+    if(m >= 1000) return `${Math.round(m).toLocaleString()} m`;
+    return `${Math.round(m)} m`;
+  }
+
+  function showMilestone(text){
+    milestoneToast.textContent = text;
+    milestoneToast.classList.add('show');
+    state.toastTimer = 3.2;
+  }
+
+  function checkMilestones(){
+    while(state.milestoneIndex < milestones.length &&
+          state.maxHeight >= milestones[state.milestoneIndex].alt){
+      showMilestone(milestones[state.milestoneIndex].text);
+      state.milestoneIndex++;
+    }
+  }
+
+  function resizeCanvas(canvas, context, cssW, cssH){
+    canvas.width = Math.floor(cssW * dpr);
+    canvas.height = Math.floor(cssH * dpr);
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    context.setTransform(dpr,0,0,dpr,0,0);
+  }
+
+  function resize(){
+    const rect = mainCanvas.parentElement.getBoundingClientRect();
+    resizeCanvas(mainCanvas, ctx, rect.width, rect.height);
+    resizeCanvas(forceCanvas, fctx, 248, 178);
+    resizeCanvas(trajectoryCanvas, tctx, 242, 170);
+  }
+
+  function launch(){
+    const fuelFull = Math.abs(state.fuelMass-initialFuelMass) < 0.001;
+    if(state.launchUsed || !fuelFull || state.crashed) return;
+
+    state.launchUsed = true;
+    state.launched = true;
+    state.autoBurn = true;
+    state.manualBurn = false;
+
+    launchBtn.disabled = true;
+    launchBtn.textContent = 'Automatic Burn Active';
+  }
+
+  function setManualThrust(active){
+    if(state.crashed || state.landed || state.fuelMass<=0) active=false;
+
+    state.manualBurn=active;
+    if(active){
+      state.launched=true;
+      thrustBtn.classList.add('active');
+    }else{
+      thrustBtn.classList.remove('active');
+    }
+  }
+
+  function exhaustVelocity(){
+    const selected = exhaustChoices.find(choice => choice.checked);
+    return Number(selected ? selected.value : 600);
+  }
+
+  function totalMass(){
+    return dryMass + state.fuelMass;
+  }
+
+  function thrust(){
+    return state.burning ? fuelFlowRate * exhaustVelocity() : 0;
+  }
+
+  function emitParticles(dt){
+    if(!state.burning || !particlesToggle.checked) return;
+    const count = Math.max(1, Math.floor(65 * dt));
+    const veVisual = 120 + Math.min(1,(exhaustVelocity()-400)/600) * 240
+      + Math.max(0,(exhaustVelocity()-1000)/1500) * 120;
+    for(let i=0;i<count;i++){
+      particles.push({
+        x:(Math.random()-.5)*17,
+        y:state.y - 4,
+        vx:(Math.random()-.5)*28,
+        vy:-veVisual*(0.75+Math.random()*.35),
+        life:.7+Math.random()*.45,
+        age:0,
+        r:2+Math.random()*2.5
+      });
+    }
+  }
+
+  function successfulLanding(impactSpeed){
+    state.landed = true;
+    state.landingSpeed = impactSpeed;
+    state.autoBurn = false;
+    state.manualBurn = false;
+    state.burning = false;
+    state.v = 0;
+    state.a = 0;
+    state.y = 0;
+    thrustBtn.classList.remove('active');
+    thrustBtn.disabled = true;
+    launchBtn.disabled = true;
+    if(!secretGoals.safeLanding){
+      secretGoals.safeLanding = true;
+    }
+    if(state.secretSequenceComplete){
+      secretGoals.reboundFlight = true;
+    }
+    saveSecretProgress();
+    checkSecretUnlock();
+
+  }
+
+  function explode(){
+    state.crashed = true;
+    state.autoBurn = false;
+    state.manualBurn = false;
+    state.burning = false;
+    thrustBtn.classList.remove('active');
+    thrustBtn.disabled = true;
+    state.v = 0;
+    state.a = 0;
+    state.explosionTime = 0;
+    const colors = ['#ef4444','#f97316','#facc15','#374151'];
+    for(let i=0;i<85;i++){
+      const angle = Math.random()*Math.PI*2;
+      const speed = 50+Math.random()*180;
+      debris.push({
+        x:(Math.random()-.5)*20,
+        y:10+Math.random()*25,
+        vx:Math.cos(angle)*speed,
+        vy:Math.abs(Math.sin(angle))*speed*.85,
+        age:0,
+        life:.7+Math.random()*1.2,
+        r:2+Math.random()*5,
+        color:colors[Math.floor(Math.random()*colors.length)]
+      });
+    }
+  }
+
+  function update(dt){
+    if(state.launched && !state.crashed && !state.landed){
+      state.flightTime += dt;
+
+      state.burning = state.fuelMass > 0 && (state.autoBurn || state.manualBurn);
+
+      if(state.burning){
+        const fuelUsed = Math.min(state.fuelMass, fuelFlowRate * dt);
+        state.fuelMass -= fuelUsed;
+
+        // Once any manual fuel is used, the one-time full-tank launch is unavailable.
+        if(!state.launchUsed && state.fuelMass < initialFuelMass-0.001){
+          launchBtn.disabled = true;
+          launchBtn.textContent = 'Full Tank Required';
+        }
+      }
+
+      if(state.fuelMass <= 0){
+        state.fuelMass = 0;
+        state.burning = false;
+        state.autoBurn = false;
+        state.manualBurn = false;
+        thrustBtn.classList.remove('active');
+        thrustBtn.disabled = true;
+        if(state.launchUsed) launchBtn.textContent = 'Fuel Depleted';
+      }
+
+      const mass = totalMass();
+      const netForce = thrust() - mass*g;
+      state.a = netForce / mass;
+      state.v += state.a * dt;
+      state.y += state.v * dt;
+      state.maxHeight = Math.max(state.maxHeight, state.y);
+      if(state.maxHeight > personalBest){
+        personalBest = state.maxHeight;
+        localStorage.setItem('rocketThrustPersonalBest', String(personalBest));
+      }
+      checkMilestones();
+      updateSecretSequence();
+
+      if(state.maxHeight > 8000 && !secretGoals.highAltitude){
+        secretGoals.highAltitude = true;
+        saveSecretProgress();
+        checkSecretUnlock();
+      }
+
+      emitParticles(dt);
+
+      if(trajectory.length === 0 || Math.abs(state.y - trajectory[trajectory.length-1].y) > .4){
+        trajectory.push({t:state.flightTime, y:Math.max(0,state.y), burning:state.burning, v:state.v});
+      }
+
+      if(state.y <= 0 && state.v < 0){
+        const impactSpeed = Math.abs(state.v);
+        state.y = 0;
+        if(impactSpeed < 15){
+          successfulLanding(impactSpeed);
+        }else{
+          explode();
+        }
+      }
+    } else if(!state.launched && !state.crashed){
+      state.a = 0;
+    }
+
+    for(const p of particles){
+      p.age += dt;
+      p.x += p.vx*dt;
+      p.y += p.vy*dt;
+      p.vy -= g*dt*.3;
+    }
+    particles = particles.filter(p=>p.age<p.life);
+
+    for(const d of debris){
+      d.age += dt;
+      d.x += d.vx*dt;
+      d.y += d.vy*dt;
+      d.vy -= 150*dt;
+    }
+    debris = debris.filter(d=>d.age<d.life);
+    if(state.crashed) state.explosionTime += dt;
+
+    if(state.toastTimer > 0){
+      state.toastTimer -= dt;
+      if(state.toastTimer <= 0) milestoneToast.classList.remove('show');
+    }
+
+    // Keep the rocket locked near the vertical center, even at very high speed.
+    // The ground remains visible initially, then the camera follows the rocket exactly.
+    cameraY = Math.max(38, state.y + 55);
+    updateReadouts();
+  }
+
+  function worldToScreenY(y){
+    const h = mainCanvas.clientHeight;
+    const pixelsPerMeter = 5.0;
+    return h*0.54 + (cameraY-y)*pixelsPerMeter;
+  }
+
+  function skyColorAtAltitude(alt){
+    const stops = [
+      {a:0, c:[191,230,255]},
+      {a:5000, c:[120,190,245]},
+      {a:12000, c:[65,125,210]},
+      {a:30000, c:[28,58,125]},
+      {a:60000, c:[8,20,55]},
+      {a:100000, c:[2,5,15]}
+    ];
+    for(let i=0;i<stops.length-1;i++){
+      if(alt <= stops[i+1].a){
+        const p=(alt-stops[i].a)/(stops[i+1].a-stops[i].a);
+        const c=stops[i].c.map((v,j)=>Math.round(v+(stops[i+1].c[j]-v)*p));
+        return `rgb(${c[0]},${c[1]},${c[2]})`;
+      }
+    }
+    return 'rgb(2,5,15)';
+  }
+
+  function drawCloud(x,y,s,alpha=.85){
+    ctx.save();
+    ctx.globalAlpha=alpha;
+    ctx.fillStyle='#ffffff';
+    ctx.beginPath();
+    ctx.arc(x,y,18*s,Math.PI,0);
+    ctx.arc(x+20*s,y-8*s,24*s,Math.PI,0);
+    ctx.arc(x+46*s,y,19*s,Math.PI,0);
+    ctx.rect(x-18*s,y,82*s,18*s);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBalloon(worldY,xFrac,color){
+    const y=worldToScreenY(worldY);
+    const x=mainCanvas.clientWidth*xFrac;
+    if(y<-80||y>mainCanvas.clientHeight+80)return;
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.fillStyle=color;
+    ctx.beginPath();
+    ctx.ellipse(0,0,16,22,0,0,Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle='#7c2d12';
+    ctx.lineWidth=1.5;
+    ctx.stroke();
+    ctx.strokeStyle='#6b7280';
+    ctx.beginPath();
+    ctx.moveTo(-6,18);ctx.lineTo(-4,30);
+    ctx.moveTo(6,18);ctx.lineTo(4,30);
+    ctx.stroke();
+    ctx.fillStyle='#92400e';
+    ctx.fillRect(-6,30,12,7);
+    ctx.restore();
+  }
+
+  function drawBirds(worldY,xFrac){
+    const y=worldToScreenY(worldY);
+    const x=mainCanvas.clientWidth*xFrac;
+    if(y<-40||y>mainCanvas.clientHeight+40)return;
+    ctx.strokeStyle='rgba(31,41,55,.8)';
+    ctx.lineWidth=2;
+    for(let i=0;i<3;i++){
+      ctx.beginPath();
+      ctx.arc(x+i*18,y+(i%2)*6,6,Math.PI,Math.PI*2);
+      ctx.arc(x+12+i*18,y+(i%2)*6,6,Math.PI,Math.PI*2);
+      ctx.stroke();
+    }
+  }
+
+  function drawPlane(worldY){
+    const y=worldToScreenY(worldY);
+    const x=mainCanvas.clientWidth*.74;
+    if(y<-80||y>mainCanvas.clientHeight+80)return;
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.strokeStyle='rgba(255,255,255,.7)';
+    ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(-90,5);ctx.lineTo(-25,5);ctx.stroke();
+    ctx.fillStyle='#e5e7eb';
+    ctx.beginPath();
+    ctx.moveTo(-25,0);ctx.lineTo(24,0);ctx.lineTo(38,5);ctx.lineTo(20,9);ctx.lineTo(-25,9);
+    ctx.closePath();ctx.fill();
+    ctx.fillStyle='#cbd5e1';
+    ctx.beginPath();ctx.moveTo(-5,2);ctx.lineTo(5,-12);ctx.lineTo(12,2);ctx.closePath();ctx.fill();
+    ctx.beginPath();ctx.moveTo(-8,7);ctx.lineTo(7,20);ctx.lineTo(12,7);ctx.closePath();ctx.fill();
+    ctx.restore();
+  }
+
+  function drawWeatherBalloon(worldY){
+    const y=worldToScreenY(worldY);
+    const x=mainCanvas.clientWidth*.28;
+    if(y<-100||y>mainCanvas.clientHeight+100)return;
+    ctx.save();ctx.translate(x,y);
+    ctx.fillStyle='rgba(255,255,255,.95)';
+    ctx.beginPath();ctx.arc(0,0,13,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#e5e7eb';ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,13);ctx.lineTo(0,38);ctx.stroke();
+    ctx.fillStyle='#f3f4f6';ctx.fillRect(-6,38,12,9);
+    ctx.restore();
+  }
+
+  function drawMoonAndStars(){
+    const h=mainCanvas.clientHeight,w=mainCanvas.clientWidth;
+    const fade=Math.max(0,Math.min(1,(cameraY-35000)/45000));
+    if(fade<=0)return;
+    ctx.save();
+    ctx.globalAlpha=fade;
+    ctx.fillStyle='#ffffff';
+    for(let i=0;i<65;i++){
+      const x=(i*97 % Math.max(1,w-20))+10;
+      const y=(i*53 % Math.max(1,h-20))+10;
+      const r=(i%4===0)?1.6:1;
+      ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+    }
+    ctx.fillStyle='#f8fafc';
+    ctx.beginPath();ctx.arc(w-90,92,24,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=skyColorAtAltitude(cameraY);
+    ctx.beginPath();ctx.arc(w-80,84,24,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+  }
+
+  function drawAltitudeObjects(){
+    drawBirds(140,.20);
+    drawBalloon(800,.23,'#ef4444');
+    drawBalloon(1200,.72,'#2563eb');
+    drawBalloon(1700,.38,'#facc15');
+
+    const cloudSpecs=[
+      [2200,.15,1.0],[2800,.68,.8],[3600,.38,1.25],
+      [4600,.78,1.1],[5600,.22,.9],[7500,.55,1.2],
+      [9000,.82,.85]
+    ];
+    for(const [alt,xf,s] of cloudSpecs){
+      const y=worldToScreenY(alt);
+      if(y>-80&&y<mainCanvas.clientHeight+80) drawCloud(mainCanvas.clientWidth*xf,y,s,.78);
+    }
+    drawPlane(11000);
+    drawWeatherBalloon(27000);
+
+    const kY=worldToScreenY(100000);
+    if(kY>-40&&kY<mainCanvas.clientHeight+40){
+      ctx.save();
+      ctx.setLineDash([10,8]);
+      ctx.strokeStyle='#facc15';
+      ctx.lineWidth=3;
+      ctx.beginPath();ctx.moveTo(0,kY);ctx.lineTo(mainCanvas.clientWidth,kY);ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle='#facc15';
+      ctx.font='bold 15px Segoe UI, Arial';
+      ctx.textAlign='center';
+      ctx.fillText('KÁRMÁN LINE — 100 km — SPACE',mainCanvas.clientWidth/2,kY-12);
+      ctx.restore();
+    }
+  }
+
+  function drawGrid(){
+    const w = mainCanvas.clientWidth;
+    const h = mainCanvas.clientHeight;
+
+    const grad=ctx.createLinearGradient(0,0,0,h);
+    grad.addColorStop(0,skyColorAtAltitude(cameraY+12000));
+    grad.addColorStop(1,skyColorAtAltitude(Math.max(0,cameraY-12000)));
+    ctx.fillStyle=grad;
+    ctx.fillRect(0,0,w,h);
+
+    drawMoonAndStars();
+    drawAltitudeObjects();
+
+    const ppm = 5.0;
+    const minor = 5;
+    const major = 20;
+    const yBottom = cameraY - (h*.46)/ppm;
+    const yTop = cameraY + (h*.54)/ppm;
+
+    ctx.lineWidth=1;
+    ctx.font='11px Segoe UI, Arial';
+    ctx.textAlign='left';
+    ctx.textBaseline='middle';
+
+    let start = Math.floor(yBottom/minor)*minor;
+    for(let y=start;y<=yTop;y+=minor){
+      const sy=worldToScreenY(y);
+      const isMajor=Math.abs(y % major)<0.001;
+      const dark=cameraY>25000;
+      ctx.strokeStyle=isMajor?(dark?'rgba(255,255,255,.24)':'rgba(71,85,105,.28)'):(dark?'rgba(255,255,255,.10)':'rgba(100,116,139,.12)');
+      ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(w,sy);ctx.stroke();
+      if(isMajor && y>=0){
+        ctx.fillStyle=dark?'rgba(255,255,255,.72)':'#475467';
+        ctx.fillText(`${Math.round(y)} m`,8,sy-8);
+      }
+    }
+
+    const xCenter=w/2;
+    for(let x=xCenter%50;x<w;x+=50){
+      ctx.strokeStyle=cameraY>25000?'rgba(255,255,255,.07)':'rgba(100,116,139,.08)';
+      ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();
+    }
+  }
+
+  function drawFloor(){
+    const w=mainCanvas.clientWidth;
+    const sy=worldToScreenY(0);
+    if(sy < -10 || sy > mainCanvas.clientHeight+20) return;
+
+    const haze=Math.max(.15,1-Math.min(1,cameraY/15000));
+    ctx.save();
+    ctx.globalAlpha=haze;
+    ctx.fillStyle='#3f7d3c';
+    ctx.fillRect(0,sy,w,Math.max(14,mainCanvas.clientHeight-sy));
+    ctx.strokeStyle='#1f5130';
+    ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(w,sy);ctx.stroke();
+
+    ctx.fillStyle='#6b7280';
+    ctx.fillRect(w/2-55,sy-8,110,8);
+
+    ctx.fillStyle='#1f2937';
+    ctx.font='bold 12px Segoe UI, Arial';
+    ctx.textAlign='center';
+    ctx.fillText('GROUND',w/2,sy+20);
+
+    // Simple trees and buildings near the horizon.
+    for(let x=35;x<w;x+=140){
+      ctx.fillStyle='#166534';
+      ctx.beginPath();
+      ctx.moveTo(x,sy);ctx.lineTo(x+14,sy-34);ctx.lineTo(x+28,sy);ctx.closePath();ctx.fill();
+      ctx.fillStyle='#854d0e';ctx.fillRect(x+12,sy-8,4,8);
+    }
+    ctx.restore();
+  }
+
+  function drawRocket(){
+    if(state.crashed && state.explosionTime>.12) return;
+
+    const x=mainCanvas.clientWidth/2;
+    const baseY=worldToScreenY(state.y);
+    const top=baseY-rocketHeight;
+
+    ctx.save();
+    ctx.translate(x,baseY);
+
+    if(state.burning){
+      const flameScale=.75+Math.min(1,(exhaustVelocity()-400)/600)*.75
+        + Math.max(0,(exhaustVelocity()-1000)/1500)*.55;
+      const grad=ctx.createLinearGradient(0,0,0,70*flameScale);
+      grad.addColorStop(0,'#fde047');
+      grad.addColorStop(.45,'#f97316');
+      grad.addColorStop(1,'rgba(239,68,68,0)');
+      ctx.fillStyle=grad;
+      ctx.beginPath();
+      ctx.moveTo(-14,0);
+      ctx.quadraticCurveTo(-20,35*flameScale,0,65*flameScale);
+      ctx.quadraticCurveTo(20,35*flameScale,14,0);
+      ctx.closePath();ctx.fill();
+    }
+
+    ctx.fillStyle='#9ca3af';
+    ctx.beginPath();
+    ctx.moveTo(-rocketWidth/2,0);
+    ctx.lineTo(-rocketWidth/2-18,22);
+    ctx.lineTo(-rocketWidth/2+3,16);
+    ctx.closePath();ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(rocketWidth/2,0);
+    ctx.lineTo(rocketWidth/2+18,22);
+    ctx.lineTo(rocketWidth/2-3,16);
+    ctx.closePath();ctx.fill();
+
+    ctx.fillStyle='#e5e7eb';
+    ctx.strokeStyle='#374151';
+    ctx.lineWidth=2;
+    ctx.fillRect(-rocketWidth/2,-82,rocketWidth,82);
+    ctx.strokeRect(-rocketWidth/2,-82,rocketWidth,82);
+
+    const fuelFrac=state.fuelMass/initialFuelMass;
+    const tankH=55;
+    ctx.fillStyle='#d1d5db';
+    ctx.fillRect(-15,-69,30,tankH);
+    ctx.strokeStyle='#4b5563';
+    ctx.strokeRect(-15,-69,30,tankH);
+    ctx.fillStyle='#22c55e';
+    ctx.fillRect(-14,-15-(tankH-2)*fuelFrac,28,(tankH-2)*fuelFrac);
+
+    ctx.fillStyle='#dbeafe';
+    ctx.beginPath();ctx.arc(0,-92,10,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#1e3a8a';ctx.stroke();
+
+    ctx.fillStyle='#ef4444';
+    ctx.beginPath();
+    ctx.moveTo(-rocketWidth/2,-82);
+    ctx.lineTo(0,-112);
+    ctx.lineTo(rocketWidth/2,-82);
+    ctx.closePath();ctx.fill();
+    ctx.strokeStyle='#7f1d1d';ctx.stroke();
+
+    ctx.fillStyle='#111827';
+    ctx.fillRect(-12,-3,24,5);
+
+    ctx.restore();
+
+    for(const p of particles){
+      const px=x+p.x;
+      const py=worldToScreenY(p.y);
+      const alpha=1-p.age/p.life;
+      ctx.globalAlpha=alpha;
+      ctx.fillStyle=p.age<p.life*.45?'#f97316':'#9ca3af';
+      ctx.beginPath();ctx.arc(px,py,p.r,0,Math.PI*2);ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+
+  function drawExplosion(){
+    if(!state.crashed) return;
+    const x=mainCanvas.clientWidth/2;
+    for(const d of debris){
+      ctx.globalAlpha=1-d.age/d.life;
+      ctx.fillStyle=d.color;
+      ctx.beginPath();
+      ctx.arc(x+d.x,worldToScreenY(d.y),d.r,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha=1;
+    if(state.explosionTime<.45){
+      const r=18+state.explosionTime*160;
+      const grad=ctx.createRadialGradient(x,worldToScreenY(7),2,x,worldToScreenY(7),r);
+      grad.addColorStop(0,'rgba(255,255,255,.95)');
+      grad.addColorStop(.25,'rgba(250,204,21,.9)');
+      grad.addColorStop(.6,'rgba(249,115,22,.65)');
+      grad.addColorStop(1,'rgba(239,68,68,0)');
+      ctx.fillStyle=grad;
+      ctx.beginPath();ctx.arc(x,worldToScreenY(7),r,0,Math.PI*2);ctx.fill();
+    }
+  }
+
+  function arrow(c,x1,y1,x2,y2,color,label){
+    const dx=x2-x1,dy=y2-y1,ang=Math.atan2(dy,dx);
+    c.strokeStyle=color;c.fillStyle=color;c.lineWidth=3;
+    c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke();
+    c.beginPath();
+    c.moveTo(x2,y2);
+    c.lineTo(x2-9*Math.cos(ang-.45),y2-9*Math.sin(ang-.45));
+    c.lineTo(x2-9*Math.cos(ang+.45),y2-9*Math.sin(ang+.45));
+    c.closePath();c.fill();
+    c.font='bold 11px Segoe UI, Arial';
+    c.textAlign='left';
+    c.textBaseline='middle';
+    c.fillText(label,x2+6,y2);
+  }
+
+  function drawForceDiagram(){
+    forcePanel.style.display=forceToggle.checked?'block':'none';
+    if(!forceToggle.checked)return;
+
+    const w=248,h=178;
+    fctx.clearRect(0,0,w,h);
+    fctx.fillStyle='#f8fafc';
+    fctx.fillRect(0,0,w,h);
+
+    const cx=72, cy=87;
+    fctx.fillStyle='#94a3b8';
+    fctx.fillRect(cx-13,cy-23,26,46);
+    fctx.strokeStyle='#334155';
+    fctx.lineWidth=2;
+    fctx.strokeRect(cx-13,cy-23,26,46);
+
+    const weight=totalMass()*g;
+    const T=thrust();
+    const onGround=state.y<=0.0001 && state.v<=0 && !state.burning && !state.crashed;
+    const normal=onGround ? weight : 0;
+    const largest=Math.max(weight,T,normal,1);
+    const scale=55/largest;
+
+    function verticalArrow(x,y1,y2,color){
+      const up=y2<y1;
+      fctx.strokeStyle=color;
+      fctx.fillStyle=color;
+      fctx.lineWidth=4;
+      fctx.beginPath();
+      fctx.moveTo(x,y1);
+      fctx.lineTo(x,y2);
+      fctx.stroke();
+      fctx.beginPath();
+      fctx.moveTo(x,y2);
+      fctx.lineTo(x-7,y2+(up?10:-10));
+      fctx.lineTo(x+7,y2+(up?10:-10));
+      fctx.closePath();
+      fctx.fill();
+    }
+
+    // Draw arrows around the rocket.
+    verticalArrow(cx,cy+23,cy+23+weight*scale,'#dc2626');
+    if(T>0) verticalArrow(cx,cy-23,cy-23-T*scale,'#2563eb');
+    if(normal>0) verticalArrow(cx,cy+23,cy+23-normal*scale,'#16a34a');
+
+    // Put all labels in a dedicated text column so none are clipped.
+    fctx.font='bold 12px Segoe UI, Arial';
+    fctx.textAlign='left';
+    fctx.textBaseline='middle';
+
+    let labelY=34;
+    if(T>0){
+      fctx.fillStyle='#2563eb';
+      fctx.fillText('Thrust',120,labelY);
+      fctx.font='12px Segoe UI, Arial';
+      fctx.fillText(`${Math.round(T)} N`,120,labelY+17);
+      labelY+=45;
+      fctx.font='bold 12px Segoe UI, Arial';
+    }
+
+    if(normal>0){
+      fctx.fillStyle='#16a34a';
+      fctx.fillText('Normal force',120,labelY);
+      fctx.font='12px Segoe UI, Arial';
+      fctx.fillText(`${Math.round(normal)} N`,120,labelY+17);
+      labelY+=45;
+      fctx.font='bold 12px Segoe UI, Arial';
+    }
+
+    fctx.fillStyle='#dc2626';
+    fctx.fillText('Gravity (weight)',120,labelY);
+    fctx.font='12px Segoe UI, Arial';
+    fctx.fillText(`${Math.round(weight)} N`,120,labelY+17);
+
+    const net=T+normal-weight;
+    fctx.strokeStyle='#d0d5dd';
+    fctx.lineWidth=1;
+    fctx.beginPath();
+    fctx.moveTo(12,149);
+    fctx.lineTo(w-12,149);
+    fctx.stroke();
+
+    fctx.font='bold 12px Segoe UI, Arial';
+    fctx.textAlign='center';
+    if(state.crashed){
+      fctx.fillStyle='#991b1b';
+      fctx.fillText('Rocket impacted the ground',w/2,165);
+    }else if(state.landed){
+      fctx.fillStyle='#166534';
+      fctx.fillText('Rocket is safely on the ground',w/2,165);
+    }else{
+      fctx.fillStyle='#475467';
+      const direction=Math.abs(net)<1 ? '' : net>0 ? ' upward' : ' downward';
+      fctx.fillText(`Net force: ${Math.round(Math.abs(net))} N${direction}`,w/2,165);
+    }
+  }
+
+  function drawTrajectory(){
+    trajectoryPanel.style.display=trajectoryToggle.checked?'block':'none';
+    if(!trajectoryToggle.checked)return;
+
+    const w=242,h=170;
+    tctx.clearRect(0,0,w,h);
+    tctx.fillStyle='#fff';
+    tctx.fillRect(0,0,w,h);
+
+    const pad={l:38,r:10,t:14,b:31};
+    const maxY=Math.max(50,state.maxHeight*1.15);
+    const maxT=Math.max(5,state.flightTime*1.08);
+
+    tctx.strokeStyle='#dce2e8';
+    tctx.lineWidth=1;
+
+    // Horizontal grid and height labels.
+    tctx.font='9px Segoe UI, Arial';
+    tctx.fillStyle='#667085';
+    tctx.textAlign='right';
+    tctx.textBaseline='middle';
+    for(let i=0;i<=4;i++){
+      const y=pad.t+(h-pad.t-pad.b)*i/4;
+      const val=maxY*(4-i)/4;
+      tctx.beginPath();
+      tctx.moveTo(pad.l,y);
+      tctx.lineTo(w-pad.r,y);
+      tctx.stroke();
+      tctx.fillText(`${Math.round(val)}`,pad.l-5,y);
+    }
+
+    // Vertical grid and time labels.
+    tctx.textAlign='center';
+    tctx.textBaseline='top';
+    for(let i=0;i<=4;i++){
+      const x=pad.l+(w-pad.l-pad.r)*i/4;
+      const val=maxT*i/4;
+      tctx.beginPath();
+      tctx.moveTo(x,pad.t);
+      tctx.lineTo(x,h-pad.b);
+      tctx.stroke();
+      tctx.fillText(val.toFixed(maxT<20?1:0),x,h-pad.b+4);
+    }
+
+    // Axes.
+    tctx.strokeStyle='#475467';
+    tctx.lineWidth=1.5;
+    tctx.beginPath();
+    tctx.moveTo(pad.l,pad.t);
+    tctx.lineTo(pad.l,h-pad.b);
+    tctx.lineTo(w-pad.r,h-pad.b);
+    tctx.stroke();
+
+    // Axis labels.
+    tctx.fillStyle='#475467';
+    tctx.font='10px Segoe UI, Arial';
+    tctx.textAlign='center';
+    tctx.fillText('Time (s)',(pad.l+w-pad.r)/2,h-10);
+    tctx.save();
+    tctx.translate(10,(pad.t+h-pad.b)/2);
+    tctx.rotate(-Math.PI/2);
+    tctx.fillText('Height (m)',0,0);
+    tctx.restore();
+
+    // Height-versus-time curve.
+    if(trajectory.length>1){
+      tctx.lineWidth=2.5;
+      for(let i=1;i<trajectory.length;i++){
+        const p0=trajectory[i-1], p1=trajectory[i];
+        const x0=pad.l+(w-pad.l-pad.r)*(p0.t/maxT);
+        const y0=h-pad.b-(h-pad.t-pad.b)*(p0.y/maxY);
+        const x1=pad.l+(w-pad.l-pad.r)*(p1.t/maxT);
+        const y1=h-pad.b-(h-pad.t-pad.b)*(p1.y/maxY);
+        tctx.strokeStyle=p1.burning?'#2563eb':(p1.v<0?'#dc2626':'#6b7280');
+        tctx.beginPath();tctx.moveTo(x0,y0);tctx.lineTo(x1,y1);tctx.stroke();
+      }
+      tctx.font='9px Segoe UI, Arial';
+      tctx.textAlign='left';
+      tctx.fillStyle='#2563eb';tctx.fillText('■ powered',45,10);
+      tctx.fillStyle='#6b7280';tctx.fillText('■ coast',98,10);
+      tctx.fillStyle='#dc2626';tctx.fillText('■ descent',143,10);
+    }
+
+    // Current rocket location.
+    const rx=pad.l+(w-pad.l-pad.r)*(state.flightTime/maxT);
+    const ry=h-pad.b-(h-pad.t-pad.b)*(Math.max(0,state.y)/maxY);
+    tctx.fillStyle=state.crashed?'#dc2626':'#16a34a';
+    tctx.beginPath();
+    tctx.arc(
+      Math.min(w-pad.r,Math.max(pad.l,rx)),
+      Math.min(h-pad.b,Math.max(pad.t,ry)),
+      4,0,Math.PI*2
+    );
+    tctx.fill();
+  }
+
+  function updateReadouts(){
+    const weight=totalMass()*g;
+    document.getElementById('heightVal').textContent=`${Math.max(0,state.y).toFixed(1)} m`;
+    document.getElementById('velocityVal').textContent=`${state.v.toFixed(1)} m/s`;
+    document.getElementById('fuelVal').textContent=`${Math.round(state.fuelMass/initialFuelMass*100)}%`;
+    document.getElementById('thrustVal').textContent=`${Math.round(thrust())} N`;
+    document.getElementById('weightVal').textContent=`${Math.round(weight)} N`;
+    document.getElementById('accelVal').textContent=`${state.a.toFixed(1)} m/s²`;
+    currentAltRecord.textContent=formatAltitude(Math.max(0,state.y));
+    flightBestRecord.textContent=formatAltitude(state.maxHeight);
+    personalBestRecord.textContent=formatAltitude(personalBest);
+
+    if(!state.crashed && !state.landed && state.fuelMass>0){
+      thrustBtn.disabled=false;
+    }
+
+    if(!state.launchUsed){
+      const fuelFull=Math.abs(state.fuelMass-initialFuelMass)<0.001;
+      launchBtn.disabled=!fuelFull;
+      if(fuelFull) launchBtn.textContent='Launch Rocket';
+    }
+  }
+
+  function render(){
+    drawGrid();
+    drawFloor();
+    drawRocket();
+    drawExplosion();
+    drawForceDiagram();
+    drawTrajectory();
+
+    if(state.landed){
+      ctx.fillStyle='rgba(255,255,255,.92)';
+      ctx.fillRect(mainCanvas.clientWidth/2-170,mainCanvas.clientHeight/2-50,340,100);
+      ctx.strokeStyle='#86efac';
+      ctx.lineWidth=2;
+      ctx.strokeRect(mainCanvas.clientWidth/2-170,mainCanvas.clientHeight/2-50,340,100);
+      ctx.fillStyle='#166534';
+      ctx.font='bold 23px Segoe UI, Arial';
+      ctx.textAlign='center';
+      ctx.fillText('Successful Landing!',mainCanvas.clientWidth/2,mainCanvas.clientHeight/2-15);
+      ctx.fillStyle='#475467';
+      ctx.font='13px Segoe UI, Arial';
+      ctx.fillText(`Landing speed: ${state.landingSpeed.toFixed(1)} m/s`,mainCanvas.clientWidth/2,mainCanvas.clientHeight/2+12);
+      ctx.fillText(`Maximum height: ${state.maxHeight.toFixed(1)} m`,mainCanvas.clientWidth/2,mainCanvas.clientHeight/2+33);
+    }
+
+    if(state.crashed && state.explosionTime>.9){
+      ctx.fillStyle='rgba(255,255,255,.88)';
+      ctx.fillRect(mainCanvas.clientWidth/2-150,mainCanvas.clientHeight/2-42,300,84);
+      ctx.strokeStyle='#d1d5db';ctx.strokeRect(mainCanvas.clientWidth/2-150,mainCanvas.clientHeight/2-42,300,84);
+      ctx.fillStyle='#991b1b';ctx.font='bold 23px Segoe UI, Arial';ctx.textAlign='center';
+      ctx.fillText('Impact!',mainCanvas.clientWidth/2,mainCanvas.clientHeight/2-7);
+      ctx.fillStyle='#475467';ctx.font='13px Segoe UI, Arial';
+      ctx.fillText(`Maximum height: ${state.maxHeight.toFixed(1)} m`,mainCanvas.clientWidth/2,mainCanvas.clientHeight/2+20);
+    }
+  }
+
+  function loop(now){
+    const realDt=Math.min(.05,(now-lastTime)/1000);
+    lastTime=now;
+
+    // Advance simulated time faster without making any single physics step too large.
+    let remaining = realDt * timeScale;
+    const maxStep = .02;
+    while(remaining > 0){
+      const step = Math.min(maxStep, remaining);
+      update(step);
+      remaining -= step;
+    }
+
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  launchBtn.addEventListener('click',launch);
+
+  thrustBtn.addEventListener('pointerdown',(event)=>{
+    event.preventDefault();
+    thrustBtn.setPointerCapture?.(event.pointerId);
+    setManualThrust(true);
+  });
+  thrustBtn.addEventListener('pointerup',(event)=>{
+    event.preventDefault();
+    setManualThrust(false);
+  });
+  thrustBtn.addEventListener('pointercancel',()=>setManualThrust(false));
+  thrustBtn.addEventListener('lostpointercapture',()=>setManualThrust(false));
+  window.addEventListener('pointerup',()=>setManualThrust(false));
+
+  window.addEventListener('keydown',(event)=>{
+    if(event.code==='Space' && !event.repeat){
+      event.preventDefault();
+      setManualThrust(true);
+    }
+  });
+  window.addEventListener('keyup',(event)=>{
+    if(event.code==='Space'){
+      event.preventDefault();
+      setManualThrust(false);
+    }
+  });
+
+  function setFastAnimation(active){
+    timeScale = active ? 10 : 1;
+    speedBtn.classList.toggle('active', active);
+    speedBtn.textContent = active ? '10× Animation Active' : 'Hold for 10× Animation';
+  }
+
+  speedBtn.addEventListener('pointerdown',(event)=>{
+    event.preventDefault();
+    speedBtn.setPointerCapture?.(event.pointerId);
+    setFastAnimation(true);
+  });
+  speedBtn.addEventListener('pointerup',(event)=>{
+    event.preventDefault();
+    setFastAnimation(false);
+  });
+  speedBtn.addEventListener('pointercancel',()=>setFastAnimation(false));
+  speedBtn.addEventListener('lostpointercapture',()=>setFastAnimation(false));
+  window.addEventListener('pointerup',()=>setFastAnimation(false));
+
+  resetBtn.addEventListener('click',resetState);
+
+  exhaustChoices.forEach(choice=>{
+    choice.addEventListener('change',()=>{
+      veLabel.textContent = `${exhaustVelocity()} m/s`;
+    });
+  });
+
+  window.addEventListener('resize',()=>{dpr=Math.max(1,window.devicePixelRatio||1);resize();});
+  forceToggle.addEventListener('change',drawForceDiagram);
+  trajectoryToggle.addEventListener('change',drawTrajectory);
+
+
+  resize();
+  resetState();
+  if(secretUnlocked) revealSecretEngine(false);
+  veLabel.textContent = `${exhaustVelocity()} m/s`;
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
+
